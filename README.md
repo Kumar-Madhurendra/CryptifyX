@@ -10,7 +10,8 @@ A modern, secure file transfer application built with React, Express, and Socket
 
 - 🔐 Secure Authentication
   - JWT-based authentication system
-  - User registration and login
+  - User registration and login with validation
+  - Prevents duplicate registrations
   - Session management
 
 - 📱 Real-time Communication
