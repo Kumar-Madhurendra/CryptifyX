@@ -78,12 +78,15 @@ export function AuthProvider({ children }) {
         body: JSON.stringify(userData),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
       const data = await response.json();
       console.log('Registration response:', data);
+
+      if (data.userExists) {
+        return { 
+          success: false, 
+          error: 'You are already registered. Please log in instead.' 
+        };
+      }
 
       if (data.success) {
         localStorage.setItem('token', data.token);
