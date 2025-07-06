@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { io } from 'socket.io-client';
-import AuthForm from './components/AuthForm';
-import Dashboard from './components/Dashboard';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { SocketProvider } from './contexts/SocketContext';
+import React, { useState, useEffect } from "react";
+import { io } from "socket.io-client";
+import AuthForm from "./components/AuthForm";
+import Dashboard from "./components/Dashboard";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { SocketProvider } from "./contexts/SocketContext";
 
 function AppContent() {
   const { user } = useAuth();

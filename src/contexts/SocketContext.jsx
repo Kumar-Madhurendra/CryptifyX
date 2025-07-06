@@ -17,18 +17,35 @@ export function SocketProvider({ children }) {
 
   useEffect(() => {
     if (user) {
-      const newSocket = io('https://localhost:3001', {
-  secure: true,
-  rejectUnauthorized: false
-});
-      
+      const newSocket = io('https://localhost:5173', {
+        path: '/socket.io',
+        secure: true,
+        rejectUnauthorized: false,
+        withCredentials: true,
+        transports: ['websocket'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        autoConnect: false
+      });
+
+      // Connect manually after initialization
+      newSocket.connect();
+
       newSocket.on('connect', () => {
+        console.log('Socket connected');
         setConnected(true);
         const token = localStorage.getItem('token');
         newSocket.emit('authenticate', { token });
       });
 
-      newSocket.on('disconnect', () => {
+      newSocket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+        setConnected(false);
+      });
+
+      newSocket.on('disconnect', (reason) => {
+        console.log('Socket disconnected:', reason);
         setConnected(false);
       });
 

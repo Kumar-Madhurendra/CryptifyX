@@ -6,7 +6,7 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
-const API_BASE_URL = 'https://localhost:3001';
+// Using relative URLs for API calls since we have proxy configured in Vite
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -34,7 +34,7 @@ export function AuthProvider({ children }) {
     try {
       console.log('Attempting login...');
       
-      const response = await fetch(`${API_BASE_URL}/api/login`, {
+      const response = await fetch('/api/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -59,7 +59,10 @@ export function AuthProvider({ children }) {
       }
     } catch (error) {
       console.error('Login error:', error);
-      return { success: false, error: 'Connection error. Please make sure the server is running.' };
+      return { 
+        success: false, 
+        error: error.message || 'Connection error. Please make sure the server is running.' 
+      };
     }
   };
 
@@ -67,7 +70,7 @@ export function AuthProvider({ children }) {
     try {
       console.log('Attempting registration...');
       
-      const response = await fetch(`${API_BASE_URL}/api/register`, {
+      const response = await fetch('/api/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -92,7 +95,10 @@ export function AuthProvider({ children }) {
       }
     } catch (error) {
       console.error('Registration error:', error);
-      return { success: false, error: 'Connection error. Please make sure the server is running.' };
+      return { 
+        success: false, 
+        error: error.message || 'Connection error. Please make sure the server is running.' 
+      };
     }
   };
 

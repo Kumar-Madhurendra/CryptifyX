@@ -12,22 +12,41 @@ const app = express();
 
 // SSL certificate options
 const serverOptions = {
-  key: fs.readFileSync('key.pem'),
-  cert: fs.readFileSync('cert.pem')
+  key: fs.readFileSync('certificates/key.pem'),
+  cert: fs.readFileSync('certificates/cert.pem')
 };
 
 const server = createServer(serverOptions, app);
+
+// Add error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Server error:', err.stack);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
 const io = new Server(server, {
   cors: {
     origin: "https://localhost:5173",
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true
-  }
+  },
+  allowEIO3: true,
+  path: '/socket.io',
+  serveClient: true,
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  maxHttpBufferSize: 1e8, // 100MB
+  allowUpgrades: true,
+  transports: ['websocket'],
+  cookie: false
 });
 
 app.use(cors({
   origin: "https://localhost:5173",
-  credentials: true
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  exposedHeaders: ["Authorization"]
 }));
 app.use(express.json());
 
