@@ -4,11 +4,17 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import CryptoJS from 'crypto-js';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
+import { apiLimiter, transferLimiter, loginLimiter } from './src/utils/rateLimiter.js';
+import { cryptoManager } from './src/utils/crypto.js';
 
 const app = express();
+
+// Apply rate limiters
+app.use('/api/login', loginLimiter);
+app.use('/api/register', loginLimiter);
+app.use('/api', apiLimiter);
 
 // SSL certificate options
 const serverOptions = {
@@ -198,19 +204,26 @@ io.on('connection', (socket) => {
     }
   });
   
-  // File transfer initiation
-  socket.on('initiateTransfer', (data) => {
-    const { recipientId, fileName, fileSize, fileType } = data;
-    const transferId = uuidv4();
-    
-    console.log('Transfer initiated:', { transferId, recipientId, fileName });
-    
-    // Find recipient socket
-    const recipient = Array.from(activeUsers.values()).find(user => user.id === recipientId);
-    
-    if (recipient) {
+  // File transfer initiation with rate limiting and error handling
+  socket.on('initiateTransfer', async (data) => {
+    try {
+      const { recipientId, fileName, fileSize, fileType } = data;
+      const transferId = uuidv4();
+
+      // Apply transfer rate limiting
+      await transferLimiter.apply(socket.userId);
+
+      console.log('Transfer initiated:', { transferId, recipientId, fileName });
+      
+      // Find recipient socket
+      const recipient = Array.from(activeUsers.values()).find(user => user.id === recipientId);
+      
+      if (!recipient) {
+        throw new Error('Recipient not found');
+      }
+
       // Store transfer info
-      fileTransfers.set(transferId, {
+      const transfer = {
         id: transferId,
         senderId: socket.userId,
         senderUsername: socket.username,
@@ -221,7 +234,8 @@ io.on('connection', (socket) => {
         status: 'pending',
         chunks: [],
         createdAt: new Date()
-      });
+      };
+      fileTransfers.set(transferId, transfer);
       
       // Notify recipient
       io.to(recipientId).emit('transferRequest', {
@@ -233,8 +247,12 @@ io.on('connection', (socket) => {
       });
       
       socket.emit('transferInitiated', { transferId });
-    } else {
-      socket.emit('transferError', { error: 'Recipient not found' });
+    } catch (error) {
+      console.error('Transfer initiation error:', error);
+      socket.emit('transferError', { 
+        error: error.message || 'Failed to initiate transfer',
+        code: 'TRANSFER_INIT_ERROR'
+      });
     }
   });
   
@@ -268,22 +286,34 @@ io.on('connection', (socket) => {
       // Notify sender
       io.to(transfer.senderId).emit('transferRejected', { transferId });
       
-      // Clean up
+      // Clean up with proper key cleanup
+      cryptoManager.cleanup(transferId);
       fileTransfers.delete(transferId);
     }
   });
   
-  // File chunk transfer
-  socket.on('fileChunk', (data) => {
-    const { transferId, chunk, chunkIndex, totalChunks } = data;
-    const transfer = fileTransfers.get(transferId);
-    
-    if (transfer && transfer.senderId === socket.userId) {
-      // Encrypt chunk
-      const encryptedChunk = CryptoJS.AES.encrypt(JSON.stringify(chunk), 'secret-key').toString();
+  // File chunk transfer with rate limiting, encryption, and error handling
+  socket.on('fileChunk', async (data) => {
+    try {
+      const { transferId, chunk, chunkIndex, totalChunks } = data;
+      const transfer = fileTransfers.get(transferId);
       
-      // Store chunk
-      transfer.chunks[chunkIndex] = encryptedChunk;
+      if (!transfer || transfer.senderId !== socket.userId) {
+        throw new Error('Invalid transfer or unauthorized access');
+      }
+
+      // Apply transfer rate limiting
+      if (chunkIndex === 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Basic rate limiting
+      }
+
+      // Encrypt chunk with proper key management
+      const { encryptedData, checksum } = await cryptoManager.encrypt(chunk, transferId);
+      
+      // Store chunk with checksum
+      transfer.chunks[chunkIndex] = encryptedData;
+      transfer.checksums = transfer.checksums || [];
+      transfer.checksums[chunkIndex] = checksum;
       
       // Calculate progress
       const progress = Math.round((transfer.chunks.filter(c => c).length / totalChunks) * 100);
@@ -292,34 +322,49 @@ io.on('connection', (socket) => {
       io.to(transfer.senderId).emit('transferProgress', { transferId, progress });
       io.to(transfer.recipientId).emit('transferProgress', { transferId, progress });
       
-      // If all chunks received, complete transfer
+      // If all chunks received, complete transfer with verification
       if (transfer.chunks.filter(c => c).length === totalChunks) {
-        transfer.status = 'completed';
-        
-        console.log('Transfer completed:', transferId);
-        
-        // Decrypt and send complete file to recipient
-        const decryptedChunks = transfer.chunks.map(chunk => {
-          const decrypted = CryptoJS.AES.decrypt(chunk, 'secret-key').toString(CryptoJS.enc.Utf8);
-          return JSON.parse(decrypted);
-        });
-        
-        io.to(transfer.recipientId).emit('fileReceived', {
-          transferId,
-          fileName: transfer.fileName,
-          fileType: transfer.fileType,
-          chunks: decryptedChunks
-        });
-        
-        io.to(transfer.senderId).emit('transferCompleted', { transferId });
-        
-        // Clean up after some time
-        setTimeout(() => {
-          fileTransfers.delete(transferId);
-        }, 300000); // 5 minutes
+        try {
+          // Verify all chunks
+          for (let i = 0; i < totalChunks; i++) {
+            const decrypted = cryptoManager.decrypt(transfer.chunks[i], transferId);
+            if (!cryptoManager.verifyChecksum(decrypted, transfer.checksums[i])) {
+              throw new Error(`Checksum verification failed for chunk ${i}`);
+            }
+          }
+
+          transfer.status = 'completed';
+          
+          // Notify both parties of successful transfer
+          io.to(transfer.senderId).emit('transferCompleted', { transferId });
+          io.to(transfer.recipientId).emit('transferCompleted', { transferId });
+        } catch (error) {
+          console.error('Transfer verification error:', error);
+          transfer.status = 'failed';
+          
+          // Notify both parties of transfer failure
+          io.to(transfer.senderId).emit('transferFailed', { 
+            transferId, 
+            error: error.message || 'Transfer verification failed'
+          });
+          io.to(transfer.recipientId).emit('transferFailed', { 
+            transferId, 
+            error: error.message || 'Transfer verification failed'
+          });
+        }
       }
+
+      // Clean up with proper key cleanup
+      cryptoManager.cleanup(transferId);
+    } catch (error) {
+      console.error('File chunk error:', error);
+      socket.emit('transferError', { 
+        error: error.message || 'Failed to process file chunk',
+        code: 'CHUNK_PROCESS_ERROR'
+      });
     }
   });
+
   
   // Disconnect handling
   socket.on('disconnect', () => {

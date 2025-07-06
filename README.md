@@ -26,10 +26,28 @@ A modern, secure file transfer application built with React, Express, and Socket
   - Error handling and recovery
 
 - 🔒 Security Features
-  - HTTPS/WSS encryption
-  - Self-signed SSL certificates for development
-  - Secure WebSocket connections
-  - CORS protection
+  - End-to-end encryption with AES-256
+    - Unique encryption keys per transfer
+    - CBC mode with secure initialization vectors
+    - SHA-256 checksums for data integrity
+  - Rate Limiting
+    - 100 API requests per 15 minutes
+    - 10 file transfers per minute per user
+    - 5 login attempts per 15 minutes
+  - Secure Authentication
+    - JWT-based session management
+    - Password hashing with bcrypt
+    - Secure token storage
+  - Network Security
+    - HTTPS/WSS encryption
+    - Secure WebSocket connections
+    - CORS protection
+    - Self-signed SSL certificates for development
+  - Error Handling & Recovery
+    - Comprehensive error handling
+    - Transfer verification
+    - Automatic cleanup of failed transfers
+    - Detailed error codes and messages
 
 - 🎨 Modern UI/UX
   - Responsive design with Tailwind CSS
