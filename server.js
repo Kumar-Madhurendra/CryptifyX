@@ -61,7 +61,16 @@ const users = new Map();
 const activeUsers = new Map();
 const fileTransfers = new Map();
 
-const JWT_SECRET = 'your-secret-key-change-in-production';
+// Load environment variables
+import 'dotenv/config';
+
+// Use environment variable for JWT secret with fallback for development
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
+// Throw error if in production and JWT_SECRET is not set
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required in production');
+}
 
 // User registration
 app.post('/api/register', async (req, res) => {
