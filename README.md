@@ -1,4 +1,4 @@
-# SecureTransfer - Secure File Transfer Application
+# CryptifyX - Secure File Transfer Application
 
 A modern, secure file transfer application built with React, Express, and Socket.IO, featuring real-time file sharing and secure authentication.
 
